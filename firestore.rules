@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net - Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 2. Validation Blueprints & Match blocks for employees collection
+    match /employees/{employeeId} {
+      
+      // Helper to validate employee structure type and boundary limits
+      function isValidEmployee(data) {
+        return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+            && data.role is string && data.role.size() > 0 && data.role.size() <= 100
+            && data.department is string && data.department.size() > 0 && data.department.size() <= 100
+            && data.email is string && data.email.size() > 0 && data.email.size() <= 100
+            && data.phone is string && data.phone.size() > 0 && data.phone.size() <= 30
+            && data.status is string && (data.status == 'Active' || data.status == 'Onboarding' || data.status == 'Suspended')
+            && data.joinedAt is string && data.joinedAt.size() > 0 && data.joinedAt.size() <= 50
+            && data.createdBy is string && data.createdBy == request.auth.uid;
+      }
+
+      // Secure list and individual document fetch
+      allow read, get: if isSignedIn() 
+                         && request.auth.token.email_verified == true 
+                         && resource.data.createdBy != null;
+
+      allow list: if isSignedIn() 
+                   && request.auth.token.email_verified == true;
+
+      // Creation Rule
+      allow create: if (
+        isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isValidId(employeeId) &&
+        incoming().keys().hasAll(['name', 'role', 'department', 'email', 'phone', 'status', 'joinedAt', 'createdBy', 'createdAt']) &&
+        incoming().keys().size() == 9 &&
+        isValidEmployee(incoming()) &&
+        incoming().createdAt == request.time
+      );
+
+      // Action-based Update Rules with Immortality invariants
+      allow update: if (
+        isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isValidId(employeeId) &&
+        incoming().keys().hasAll(['name', 'role', 'department', 'email', 'phone', 'status', 'joinedAt', 'createdBy', 'createdAt', 'updatedAt']) &&
+        incoming().keys().size() == 10 &&
+        isValidEmployee(incoming()) &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'department', 'email', 'phone', 'status', 'joinedAt', 'updatedAt'])
+      );
+
+      // Delete Rules: Only original creator can delete the employee record
+      allow delete: if (
+        isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        isValidId(employeeId) &&
+        existing().createdBy == request.auth.uid
+      );
+    }
+  }
+}

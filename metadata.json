@@ -1,0 +1,6 @@
+{
+  "name": "Portal Data Karyawan",
+  "description": "Aplikasi registrasi dan manajemen data karyawan baru secara realtime berbasis Firebase Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
